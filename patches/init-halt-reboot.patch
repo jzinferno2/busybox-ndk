@@ -1,0 +1,99 @@
+diff --git a/init/halt.c b/init/halt.c
+index fe3cb9e..2f547eb 100644
+--- a/init/halt.c
++++ b/init/halt.c
+@@ -97,6 +97,10 @@
+ #if ENABLE_FEATURE_WTMP
+ #include <sys/utsname.h>
+ 
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++
+ static void write_wtmp(void)
+ {
+ 	struct utmpx utmp;
+@@ -161,6 +165,35 @@ static int init_was_not_there(void)
+ # define init_was_not_there() 0
+ #endif
+ 
++int reboot_android(int argc, char *argv[]) {
++	int ret;
++
++	const char* restart_cmd = NULL;
++	char* prop_value;
++	char* prop_cmd;
++
++	restart_cmd = "reboot";
++	while (true) {
++		int c = getopt(argc, argv, "p");
++		if (c == EOF)
++		break;
++		switch (c) {
++			case 'p':
++			restart_cmd = "shutdown";
++			break;
++		}
++	}
++
++	if (argc > optind)
++	asprintf(&prop_value, "%s,%s", restart_cmd, argv[optind]);
++	else
++	asprintf(&prop_value, "%s", restart_cmd);
++
++	asprintf(&prop_cmd, "setprop sys.powerctl %s", prop_value);
++	ret = execlp("sh", "sh", "-c", prop_cmd, NULL);
++	return ret;
++}
++
+ int halt_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int halt_main(int argc UNUSED_PARAM, char **argv)
+ {
+@@ -204,6 +237,29 @@ int halt_main(int argc UNUSED_PARAM, char **argv)
+ 	if (!(flags & 2)) /* no -n */
+ 		sync();
+ 
++#ifdef __ANDROID__
++	char *mode[4];
++	int c = 1;
++	mode[0] = strdup("reboot");
++	mode[1] = mode[2] = mode[3] = NULL;
++	switch (which) {
++	case 0:
++	case 1:
++		//-p for halt
++		mode[1] = strdup("-p");
++		c = 2;
++		break;
++	case 2:
++		//reboot
++		if (argc > 1) {
++			mode[1] = strdup(argv[1]);
++			c = 2;
++		}
++		break;
++	}
++	return reboot_android(c, mode);
++#endif
++
+ 	/* Perform action. */
+ 	rc = 1;
+ 	if (!(flags & 4)) { /* no -f */
+diff --git a/init/init.c b/init/init.c
+index efab5dc..0611682 100644
+--- a/init/init.c
++++ b/init/init.c
+@@ -973,6 +973,13 @@ static void reload_inittab(void)
+ }
+ #endif
+ 
++#if __ANDROID_API__ < 23
++int sigtimedwait (const sigset_t *set, siginfo_t *info, const struct timespec *timeout)
++{
++	return -1;
++}
++#endif
++
+ static void check_delayed_sigs(struct timespec *ts)
+ {
+ 	int sig = sigtimedwait(&G.delayed_sigset, /* siginfo_t */ NULL, ts);

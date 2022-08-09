@@ -1,0 +1,200 @@
+diff --git a/include/platform.h b/include/platform.h
+index ad27bb3..c5a2ef7 100644
+--- a/include/platform.h
++++ b/include/platform.h
+@@ -124,7 +124,7 @@
+  * (-DFAST_FUNC= )
+  */
+ #ifndef FAST_FUNC
+-# if __GNUC_PREREQ(3,0) && defined(i386)
++# if __GNUC_PREREQ(3,0) && defined(i386) && !defined(__ANDROID__)
+ /* stdcall makes callee to pop arguments from stack, not caller */
+ #  define FAST_FUNC __attribute__((regparm(3),stdcall))
+ /* #elif ... - add your favorite arch today! */
+@@ -428,6 +428,7 @@ typedef unsigned smalluint;
+ #define HAVE_SYS_STATFS_H 1
+ #define HAVE_PRINTF_PERCENTM 1
+ #define HAVE_WAIT3 1
++#define HAVE_ISSETUGID 1
+ #define HAVE_DEV_FD 1
+ #define DEV_FD_PREFIX "/dev/fd/"
+ 
+@@ -535,6 +536,9 @@ typedef unsigned smalluint;
+ # else
+    /* ANDROID >= 21 has standard dprintf */
+ # endif
++# if __ANDROID_API__ > 18
++#  undef HAVE_ISSETUGID
++# endif
+ # if __ANDROID_API__ < 21
+ #  undef HAVE_TTYNAME_R
+ #  undef HAVE_GETLINE
+@@ -545,11 +549,14 @@ typedef unsigned smalluint;
+ #  undef HAVE_WAIT3
+ # endif
+ # undef HAVE_MEMPCPY
+-# undef HAVE_STRCHRNUL
++# if __ANDROID_API__ < 24
++#  undef HAVE_STRCHRNUL
++# endif
+ # undef HAVE_STRVERSCMP
+ # undef HAVE_UNLOCKED_LINE_OPS
+ # undef HAVE_NET_ETHERNET_H
+ # undef HAVE_PRINTF_PERCENTM
++# undef HAVE_SETBIT
+ #endif
+ 
+ /*
+@@ -634,4 +641,8 @@ extern int vasprintf(char **string_ptr, const char *format, va_list p) FAST_FUNC
+ extern ssize_t getline(char **lineptr, size_t *n, FILE *stream) FAST_FUNC;
+ #endif
+ 
++#ifndef HAVE_ISSETUGID
++extern int issetugid(void) FAST_FUNC;
++#endif
++
+ #endif
+diff --git a/libbb/missing_syscalls.c b/libbb/missing_syscalls.c
+index dc40d91..3897a61 100644
+--- a/libbb/missing_syscalls.c
++++ b/libbb/missing_syscalls.c
+@@ -7,30 +7,124 @@
+ 
+ #include "libbb.h"
+ 
++#ifndef __NR_shmget
++# define __NR_shmget 29
++#endif
++
++#ifndef __NR_shmat
++# define __NR_shmat 30
++#endif
++
++#ifndef __NR_shmctl
++# define __NR_shmctl 31
++#endif
++
++#ifndef __NR_semget
++# define __NR_semget 64
++#endif
++
++#ifndef __NR_semop
++# define __NR_semop 65
++#endif
++
++#ifndef __NR_semctl
++# define __NR_semctl 66
++#endif
++
++#ifndef __NR_shmdt
++# define __NR_shmdt 67
++#endif
++
++#ifndef __NR_msgget
++# define __NR_msgget 68
++#endif
++
++#ifndef __NR_msgsnd
++# define __NR_msgsnd 69
++#endif
++
++#ifndef __NR_msgrcv
++# define __NR_msgrcv 70
++#endif
++
++#ifndef __NR_msgctl
++# define __NR_msgctl 71
++#endif
++
+ #if defined(ANDROID) || defined(__ANDROID__)
+ /*# include <linux/timex.h> - for struct timex, but may collide with <time.h> */
+ # include <sys/syscall.h>
++
++# if __ANDROID_API__ < 17
+ pid_t getsid(pid_t pid)
+ {
+ 	return syscall(__NR_getsid, pid);
+ }
++# endif
+ 
++# if __ANDROID_API__ < 23
+ int sethostname(const char *name, size_t len)
+ {
+ 	return syscall(__NR_sethostname, name, len);
+ }
++# endif
+ 
++# if __ANDROID_API__ < 24
+ struct timex;
+ int adjtimex(struct timex *buf)
+ {
+ 	return syscall(__NR_adjtimex, buf);
+ }
++# endif
+ 
+ int pivot_root(const char *new_root, const char *put_old)
+ {
+ 	return syscall(__NR_pivot_root, new_root, put_old);
+ }
+ 
++int shmget(key_t key, size_t size, int shmflg)
++{
++	return syscall(__NR_shmget, key, size, shmflg);
++}
++
++int shmdt(const void *shmaddr)
++{
++	return syscall(__NR_shmdt, shmaddr);
++}
++
++void *shmat(int shmid, const void *shmaddr, int shmflg)
++{
++	return (void *)syscall(__NR_shmat, shmid, shmaddr, shmflg);
++}
++
++int msgget(key_t key, int msgflg)
++{
++	return syscall(__NR_msgget, key, msgflg);
++}
++
++int semget(key_t key, int nsems, int semflg)
++{
++	return syscall(__NR_semget, key, nsems, semflg);
++}
++
++struct msqid_ds;
++int msgctl(int msqid, int cmd, struct msqid_ds *buf)
++{
++	return syscall(__NR_msgctl, msqid, cmd, buf);
++}
++
++struct shmid_ds;
++int shmctl(int shmid, int cmd, struct shmid_ds *buf)
++{
++	return syscall(__NR_shmctl, shmid, cmd, buf);
++}
++
++struct sembuf;
++int semop(int semid, struct sembuf *sops, unsigned nsops)
++{
++	return syscall(__NR_semop, semid, sops, nsops);
++}
++
+ # if __ANDROID_API__ < 21
+ int tcdrain(int fd)
+ {
+diff --git a/libbb/platform.c b/libbb/platform.c
+index 7913353..2bf5d73 100644
+--- a/libbb/platform.c
++++ b/libbb/platform.c
+@@ -225,3 +225,10 @@ int ttyname_r(int fd, char *buf, size_t buflen)
+ 	return 0;
+ }
+ #endif
++
++#ifndef HAVE_ISSETUGID
++int issetugid(void)
++{
++	return 0;
++}
++#endif

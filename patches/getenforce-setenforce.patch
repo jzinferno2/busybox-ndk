@@ -1,0 +1,151 @@
+diff --git a/selinux/Config.src b/selinux/Config.src
+index f8fcdad..f8a12e7 100644
+--- a/selinux/Config.src
++++ b/selinux/Config.src
+@@ -4,7 +4,6 @@
+ #
+ 
+ menu "SELinux Utilities"
+-	depends on SELINUX
+ 
+ INSERT
+ 
+diff --git a/selinux/getenforce.c b/selinux/getenforce.c
+index f082ba6..9847815 100644
+--- a/selinux/getenforce.c
++++ b/selinux/getenforce.c
+@@ -9,7 +9,6 @@
+ //config:config GETENFORCE
+ //config:	bool "getenforce (1.7 kb)"
+ //config:	default n
+-//config:	depends on SELINUX
+ //config:	help
+ //config:	Enable support to get the current mode of SELinux.
+ 
+@@ -25,21 +24,20 @@
+ int getenforce_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int getenforce_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+ {
+-	int rc;
+-
+-	rc = is_selinux_enabled();
+-	if (rc < 0)
+-		bb_simple_error_msg_and_die("is_selinux_enabled() failed");
+-
+-	if (rc == 1) {
+-		rc = security_getenforce();
+-		if (rc < 0)
+-			bb_simple_error_msg_and_die("getenforce() failed");
+-
+-		if (rc)
++	if (is_selinux_enabled() == 1) {
++		int selinux_status;
++		FILE *selinux_file;
++		if ((selinux_file = fopen("/sys/fs/selinux/enforce", "r")) == NULL) {
++			selinux_status = 1;
++		} else {
++			fscanf(selinux_file, "%d", &selinux_status);
++			fclose(selinux_file);
++		}
++		if (selinux_status) {
+ 			puts("Enforcing");
+-		else
++		} else {
+ 			puts("Permissive");
++		}
+ 	} else {
+ 		puts("Disabled");
+ 	}
+diff --git a/selinux/selinuxenabled.c b/selinux/selinuxenabled.c
+index e70a452..fb8bdff 100644
+--- a/selinux/selinuxenabled.c
++++ b/selinux/selinuxenabled.c
+@@ -9,7 +9,6 @@
+ //config:config SELINUXENABLED
+ //config:	bool "selinuxenabled (321 bytes)"
+ //config:	default n
+-//config:	depends on SELINUX
+ //config:	help
+ //config:	Enable support for this command to be used within shell scripts
+ //config:	to determine if selinux is enabled.
+@@ -23,6 +22,11 @@
+ 
+ #include "libbb.h"
+ 
++bool is_selinux_enabled(void) {
++	struct stat buffer;
++	return (stat("/sys/fs/selinux/enforce", &buffer) == 0);
++}
++
+ int selinuxenabled_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int selinuxenabled_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+ {
+diff --git a/selinux/setenforce.c b/selinux/setenforce.c
+index 996034f..054d7f1 100644
+--- a/selinux/setenforce.c
++++ b/selinux/setenforce.c
+@@ -9,7 +9,6 @@
+ //config:config SETENFORCE
+ //config:	bool "setenforce (2.1 kb)"
+ //config:	default n
+-//config:	depends on SELINUX
+ //config:	help
+ //config:	Enable support to modify the mode SELinux is running in.
+ 
+@@ -23,35 +22,31 @@
+ 
+ #include "libbb.h"
+ 
+-/* These strings are arranged so that odd ones
+- * result in security_setenforce(1) being done,
+- * the rest will do security_setenforce(0) */
+-static const char *const setenforce_cmd[] = {
+-	"0",
+-	"1",
+-	"permissive",
+-	"enforcing",
+-	NULL,
+-};
+-
+ int setenforce_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int setenforce_main(int argc UNUSED_PARAM, char **argv)
+ {
+-	int i, rc;
+-
+-	if (!argv[1] || argv[2])
++	int status;
++	if (!argv[1] || argv[2]) {
++		bb_show_usage();
++	} else if (strcmp(argv[1], "enforcing") == 0 || strlen(argv[1]) == 1 && argv[1][0] == '1') {
++		status = 1;
++	} else if (strcmp(argv[1], "permissive") == 0 || strlen(argv[1]) == 1 && argv[1][0] == '0') {
++		status = 0;
++	} else {
+ 		bb_show_usage();
+-
+-	selinux_or_die();
+-
+-	for (i = 0; setenforce_cmd[i]; i++) {
+-		if (strcasecmp(argv[1], setenforce_cmd[i]) != 0)
+-			continue;
+-		rc = security_setenforce(i & 1);
+-		if (rc < 0)
+-			bb_simple_perror_msg_and_die("setenforce() failed");
+-		return 0;
+ 	}
+ 
+-	bb_show_usage();
++	if (is_selinux_enabled() == 1) {
++		FILE *enforce_file = fopen("/sys/fs/selinux/enforce", "w");
++		if(enforce_file == NULL) {
++			puts("Permission denied!");
++			return 1;
++		}
++		fprintf(enforce_file, "%d", status);
++		fclose(enforce_file);
++	} else {
++		puts("SELinux is disabled!");
++		return 1;
++	}
++	return 0;
+ }

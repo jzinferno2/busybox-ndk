@@ -1,0 +1,37 @@
+diff --git a/coreutils/hostid.c b/coreutils/hostid.c
+index 0388094..51311c9 100644
+--- a/coreutils/hostid.c
++++ b/coreutils/hostid.c
+@@ -36,7 +36,7 @@ int hostid_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+ 	}
+ 
+ 	/* POSIX says gethostid returns a "32-bit identifier" */
+-	printf("%08x\n", (unsigned)(uint32_t)gethostid());
++	printf("%08x\n", (unsigned)(uint32_t)NULL);
+ 
+ 	return fflush_all();
+ }
+diff --git a/coreutils/logname.c b/coreutils/logname.c
+index 06bbe1b..700f9d1 100644
+--- a/coreutils/logname.c
++++ b/coreutils/logname.c
+@@ -41,6 +41,19 @@
+ 
+ /* This is a NOFORK applet. Be very careful! */
+ 
++# if __ANDROID_API__ < 28
++int getlogin_r(char* name, size_t namesize)
++{
++	char *s = getlogin();
++	if (s) {
++		strncpy (name, s, namesize);
++		return 0;
++	} else {
++		return -1;
++	}
++}
++# endif
++
+ int logname_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int logname_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+ {
