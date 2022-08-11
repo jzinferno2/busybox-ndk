@@ -7,7 +7,7 @@ index 0388094..51311c9 100644
  
  	/* POSIX says gethostid returns a "32-bit identifier" */
 -	printf("%08x\n", (unsigned)(uint32_t)gethostid());
-+	printf("%08x\n", (unsigned)(uint32_t)NULL);
++	printf("%08x\n", (unsigned)(uint32_t)0);
  
  	return fflush_all();
  }

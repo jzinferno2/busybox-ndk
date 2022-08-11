@@ -1,0 +1,13 @@
+diff --git a/Makefile b/Makefile
+index edaa3c1..f083600 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,7 +1,7 @@
+ VERSION = 1
+ PATCHLEVEL = 35
+ SUBLEVEL = 0
+-EXTRAVERSION =
++EXTRAVERSION = -jzinferno
+ NAME = Unnamed
+ 
+ # *DOCUMENTATION*
