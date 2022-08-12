@@ -97,8 +97,8 @@ LOCAL_SRC_FILES := \
   coreutils/head.c \
   coreutils/id.c \
   coreutils/install.c \
-  coreutils/lib  coreutils/cp_mv_stat.c \
-  coreutils/lib  coreutils/getopt_mk_fifo_nod.c \
+  coreutils/libcoreutils/cp_mv_stat.c \
+  coreutils/libcoreutils/getopt_mk_fifo_nod.c \
   coreutils/link.c \
   coreutils/ln.c \
   coreutils/ls.c \
