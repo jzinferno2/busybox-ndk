@@ -11,7 +11,7 @@ index f8fcdad..f8a12e7 100644
  INSERT
  
 diff --git a/selinux/getenforce.c b/selinux/getenforce.c
-index f082ba6..9847815 100644
+index f082ba6..b8d8948 100644
 --- a/selinux/getenforce.c
 +++ b/selinux/getenforce.c
 @@ -9,7 +9,6 @@
@@ -22,7 +22,12 @@ index f082ba6..9847815 100644
  //config:	help
  //config:	Enable support to get the current mode of SELinux.
  
-@@ -25,21 +24,20 @@
+@@ -21,25 +20,25 @@
+ //usage:#define getenforce_full_usage ""
+ 
+ #include "libbb.h"
++#include "jzselinux.h"
+ 
  int getenforce_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
  int getenforce_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
  {
@@ -40,14 +45,14 @@ index f082ba6..9847815 100644
 -		if (rc)
 +	if (is_selinux_enabled() == 1) {
 +		int selinux_status;
-+		FILE *selinux_file;
-+		if ((selinux_file = fopen("/sys/fs/selinux/enforce", "r")) == NULL) {
++		FILE *selinux_file = fopen(ENFORCE_FILE, "r");
++		if (selinux_file == NULL) {
 +			selinux_status = 1;
 +		} else {
-+			fscanf(selinux_file, "%d", &selinux_status);
++			selinux_status = fgetc(selinux_file);
 +			fclose(selinux_file);
 +		}
-+		if (selinux_status) {
++		if (selinux_status == 1) {
  			puts("Enforcing");
 -		else
 +		} else {
@@ -56,8 +61,15 @@ index f082ba6..9847815 100644
  	} else {
  		puts("Disabled");
  	}
+diff --git a/selinux/jzselinux.h b/selinux/jzselinux.h
+new file mode 100644
+index 0000000..8a04cc8
+--- /dev/null
++++ b/selinux/jzselinux.h
+@@ -0,0 +1 @@
++#define ENFORCE_FILE "/sys/fs/selinux/enforce"
 diff --git a/selinux/selinuxenabled.c b/selinux/selinuxenabled.c
-index e70a452..fb8bdff 100644
+index e70a452..dbf06af 100644
 --- a/selinux/selinuxenabled.c
 +++ b/selinux/selinuxenabled.c
 @@ -9,7 +9,6 @@
@@ -68,20 +80,21 @@ index e70a452..fb8bdff 100644
  //config:	help
  //config:	Enable support for this command to be used within shell scripts
  //config:	to determine if selinux is enabled.
-@@ -23,6 +22,11 @@
+@@ -22,6 +21,12 @@
+ //usage:#define selinuxenabled_full_usage ""
  
  #include "libbb.h"
- 
++#include "jzselinux.h"
++
 +bool is_selinux_enabled(void) {
 +	struct stat buffer;
-+	return (stat("/sys/fs/selinux/enforce", &buffer) == 0);
++	return (stat(ENFORCE_FILE, &buffer) == 0);
 +}
-+
+ 
  int selinuxenabled_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
  int selinuxenabled_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
- {
 diff --git a/selinux/setenforce.c b/selinux/setenforce.c
-index 996034f..054d7f1 100644
+index 996034f..ded93dd 100644
 --- a/selinux/setenforce.c
 +++ b/selinux/setenforce.c
 @@ -9,7 +9,6 @@
@@ -92,10 +105,11 @@ index 996034f..054d7f1 100644
  //config:	help
  //config:	Enable support to modify the mode SELinux is running in.
  
-@@ -23,35 +22,31 @@
+@@ -22,36 +21,37 @@
+ //usage:#define setenforce_full_usage ""
  
  #include "libbb.h"
- 
+-
 -/* These strings are arranged so that odd ones
 - * result in security_setenforce(1) being done,
 - * the rest will do security_setenforce(0) */
@@ -106,7 +120,8 @@ index 996034f..054d7f1 100644
 -	"enforcing",
 -	NULL,
 -};
--
++#include "jzselinux.h"
+ 
  int setenforce_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
  int setenforce_main(int argc UNUSED_PARAM, char **argv)
  {
@@ -116,9 +131,13 @@ index 996034f..054d7f1 100644
 +	int status;
 +	if (!argv[1] || argv[2]) {
 +		bb_show_usage();
-+	} else if (strcmp(argv[1], "enforcing") == 0 || strlen(argv[1]) == 1 && argv[1][0] == '1') {
++	} else if (argv[1][0] == '1' && argv[1][1] == '\0') {
 +		status = 1;
-+	} else if (strcmp(argv[1], "permissive") == 0 || strlen(argv[1]) == 1 && argv[1][0] == '0') {
++	} else if (argv[1][0] == '0' && argv[1][1] == '\0') {
++		status = 0;
++	} else if (strcmp(argv[1], "enforcing") == 0) {
++		status = 1;
++	} else if (strcmp(argv[1], "permissive") == 0) {
 +		status = 0;
 +	} else {
  		bb_show_usage();
@@ -136,12 +155,12 @@ index 996034f..054d7f1 100644
  
 -	bb_show_usage();
 +	if (is_selinux_enabled() == 1) {
-+		FILE *enforce_file = fopen("/sys/fs/selinux/enforce", "w");
++		FILE *enforce_file = fopen(ENFORCE_FILE, "w");
 +		if(enforce_file == NULL) {
 +			puts("Permission denied!");
 +			return 1;
 +		}
-+		fprintf(enforce_file, "%d", status);
++		fputc(status, enforce_file);
 +		fclose(enforce_file);
 +	} else {
 +		puts("SELinux is disabled!");
